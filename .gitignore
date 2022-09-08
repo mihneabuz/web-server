@@ -1,2 +1,3 @@
-simple-server/target
 client/target
+simple-server/target
+threaded-server/target
