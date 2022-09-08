@@ -1,5 +1,5 @@
-use std::io::{self, Read, Write};
-use std::net::{TcpListener, TcpStream};
+use std::io::{self, Read, Write, BufRead};
+use std::net;
 
 use fern;
 use log::{error, info, warn};
@@ -21,19 +21,29 @@ fn setup_logger() -> Result<(), log::SetLoggerError> {
         .apply()
 }
 
-fn handle(mut stream: TcpStream) -> io::Result<usize> {
-    let mut buf = [0u8; 256];
+fn handle(stream: net::TcpStream) -> io::Result<usize> {
+    let mut buf = String::new();
+    let mut reader = io::BufReader::new(&stream);
 
-    stream.read(&mut buf)?;
-
-    info!(
-        "Received from {}:{} > [{}]",
+    let (ip, port) = (
         stream.peer_addr().unwrap().ip(),
         stream.peer_addr().unwrap().port(),
-        std::str::from_utf8(&buf).unwrap_or("invalid string")
     );
 
-    stream.write(&buf)?;
+    info!("Connection from {}:{}", ip, port);
+
+    loop {
+        buf.clear();
+        let len = reader.read_line(&mut buf)?;
+
+        if len == 0 || buf == "done\n" {
+            info!("Shutdown {}:{}", ip, port);
+            stream.shutdown(net::Shutdown::Both)?;
+            break;
+        }
+
+        info!("Received from {}:{} > [bytes {}][{}]", ip, port, len, &buf[..len-1]);
+    }
 
     Ok(0)
 }
@@ -43,7 +53,7 @@ fn main() -> io::Result<()> {
         .err()
         .map(|err| println!("Could not start logging: {}", err));
 
-    let listener = TcpListener::bind(format!("127.0.0.1:{}", PORT))?;
+    let listener = net::TcpListener::bind(format!("127.0.0.1:{}", PORT))?;
 
     info!("Server started on port {}", PORT);
 
