@@ -1,4 +1,4 @@
-use std::io::{self, Read, Write, BufRead};
+use std::io::{self, BufRead};
 use std::net;
 
 use fern;
