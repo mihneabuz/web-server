@@ -1,5 +1,3 @@
-use fern;
-
 pub fn setup() -> Result<(), log::SetLoggerError> {
     fern::Dispatch::new()
         .format(|out, message, record| {

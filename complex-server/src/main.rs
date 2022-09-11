@@ -5,7 +5,10 @@ mod thread_pool;
 use std::io;
 use std::net;
 
-use log::{info, warn};
+use std::collections::HashSet;
+use std::sync::{Arc, Mutex};
+
+use log::{info, warn, error};
 
 static PORT: i32 = 3000;
 static THREADS: i32 = 4;
@@ -21,16 +24,24 @@ fn main() -> io::Result<()> {
 
     info!("Server started on port {}", PORT);
 
+    let counter = Arc::new(Mutex::new(0u64));
+    let uploads = Arc::new(Mutex::new(HashSet::new()));
+
     for connection in listener.incoming() {
         match connection {
             Ok(stream) => {
+                let counter_clone = Arc::clone(&counter);
+                let uploads_clone = Arc::clone(&uploads);
                 thread_pool.execute(|| {
-                    handler::handle(stream);
+                    if let Some(err) = handler::handle(stream, counter_clone, uploads_clone).err() {
+                        error!("{}", err);
+                    };
                 });
-            }
+            },
+
             Err(err) => {
                 warn!("Bad connection: {}", err);
-            }
+            },
         }
     }
 
