@@ -43,10 +43,10 @@ impl Command {
 }
 
 static FORTUNES: &[&str] = &[
-    "What we see is mainly what we look for.",
-    "Silence is a source of great strength.",
-    "Logic will get you from A to B. Imagination will take you everywhere.",
-    "Doing your best means never stop trying.",
+    "What we see is mainly what we look for.\n",
+    "Silence is a source of great strength.\n",
+    "Logic will get you from A to B. Imagination will take you everywhere.\n",
+    "Doing your best means never stop trying.\n",
 ];
 
 type Counter = Arc<Mutex<u64>>;
@@ -74,31 +74,33 @@ pub fn handle(stream: net::TcpStream, counter: Counter, uploads: Uploads) -> io:
             break;
         }
 
-        match Command::parse(&buf) {
+        match Command::parse(buf.trim_end()) {
             Command::Fortune => {
                 writer.write_all(FORTUNES[rand::thread_rng().next_u32() as usize % FORTUNES.len()].as_bytes())?;
             },
             Command::Increment => {
                 let mut value = counter.lock().unwrap();
                 *value += 1;
-                writer.write_all("incremented".as_bytes())?;
+                writer.write_all("incremented\n".as_bytes())?;
             },
             Command::Counter => {
                 let value = counter.lock().unwrap();
-                writer.write_all(format!("counter: {}", value).as_bytes())?;
+                writer.write_all(format!("counter: {}\n", value).as_bytes())?;
             },
             Command::Upload(item) => {
                 uploads.lock().unwrap().insert(item);
-                writer.write_all("uploaded".as_bytes())?;
+                writer.write_all("uploaded\n".as_bytes())?;
             },
             Command::Download(item) => {
                 let found = uploads.lock().unwrap().get(&item).cloned().unwrap_or_else(|| String::from("not found"));
-                writer.write_all(format!("download: {}", found).as_bytes())?;
+                writer.write_all(format!("download: {}\n", found).as_bytes())?;
             },
             Command::None => {
-                writer.write_all("ok".as_bytes())?;
+                writer.write_all("ok\n".as_bytes())?;
             },
         }
+
+        writer.flush()?;
     }
 
     Ok(())

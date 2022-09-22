@@ -1,8 +1,8 @@
-use std::io::BufRead;
+use std::io::{BufRead, Write};
 use std::{io, net, thread};
 
 use fern;
-use log::{info, warn};
+use log::{info, warn, error};
 
 static PORT: u32 = 3000;
 
@@ -24,6 +24,7 @@ fn setup_logger() -> Result<(), log::SetLoggerError> {
 fn handle(stream: net::TcpStream) -> io::Result<usize> {
     let mut buf = String::new();
     let mut reader = io::BufReader::new(&stream);
+    let mut writer = io::BufWriter::new(&stream);
 
     let (ip, port) = (
         stream.peer_addr().unwrap().ip(),
@@ -42,13 +43,13 @@ fn handle(stream: net::TcpStream) -> io::Result<usize> {
             break;
         }
 
-        info!(
-            "Received from {}:{} > [bytes {}][{}]",
-            ip,
-            port,
-            len,
-            &buf[..len - 1]
-        );
+        info!("Received from {}:{} > [bytes {}][{}]", ip, port, len, &buf[..len - 1]);
+
+        if let Err(_) = writer.write_all("ack\n".as_bytes()) {
+            error!("Could not respond!");
+        }
+
+        writer.flush()?;
     }
 
     Ok(0)

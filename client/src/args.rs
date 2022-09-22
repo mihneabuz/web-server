@@ -15,6 +15,10 @@ pub struct Args {
     /// Time in ms to wait between messages
     #[clap(short, long, value_parser, default_value_t = 0)]
     pub delay: u64,
+
+    /// Wait for response before sending next message
+    #[clap(short, long, value_parser, default_value_t = false)]
+    pub wait: bool,
 }
 
 pub fn parse() -> Args {
