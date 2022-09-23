@@ -7,6 +7,7 @@ enum Command {
     Counter,
     Upload(String),
     Download(String),
+    Compute(u64),
     None
 }
 
@@ -29,6 +30,12 @@ impl Command {
                     }
                 }
 
+                if other.starts_with("compute") {
+                    if let Some(split) = other.split_once(' ') {
+                        return Command::Compute(split.1.parse().unwrap_or(0));
+                    }
+                }
+
                 Command::None
             }
         }
@@ -41,6 +48,20 @@ static FORTUNES: &[&str] = &[
     "Logic will get you from A to B. Imagination will take you everywhere.\n",
     "Doing your best means never stop trying.\n",
 ];
+
+fn is_prime(x: u64) -> bool {
+    if x == 0 || x == 1 {
+        return false;
+    }
+
+    for i in 2..x/2 {
+        if x % i == 0 {
+            return false;
+        }
+    }
+
+    true
+}
 
 pub fn handle(message: String, counter: &mut u64, uploads: &mut HashSet<String>) -> String {
     match Command::parse(message.trim_end()) {
@@ -61,6 +82,10 @@ pub fn handle(message: String, counter: &mut u64, uploads: &mut HashSet<String>)
         Command::Download(item) => {
             let found = uploads.get(&item).cloned().unwrap_or_else(|| String::from("not found"));
             format!("download: {}\n", found)
+        },
+        Command::Compute(k) => {
+            let sum = (0..=k).fold(0, |acc, x| acc + if is_prime(x) { x } else { 0 });
+            format!("computed: {}\n", sum)
         },
         Command::None => {
             "ok\n".to_string()

@@ -13,4 +13,7 @@
 ./target/debug/client -m "download hello" -r 100 -d 100 &
 ./target/debug/client -m "download world" -r 100 -d 100 &
 
-./target/debug/client -m "counter" -r 10 -d 1000
+./target/debug/client -m "compute 3000" -r 100 -d 100 &
+./target/debug/client -m "compute 30000" -r 10 -d 1000 &
+
+./target/debug/client -m "counter" -r 100 -d 100
