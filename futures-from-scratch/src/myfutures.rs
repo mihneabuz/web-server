@@ -1,40 +1,37 @@
-use std::task::{Waker, Poll, Context};
 use std::future::Future;
 use std::pin::Pin;
-
-use crate::reactor::REACTOR;
+use std::task::{Context, Poll};
+use std::thread;
+use std::time::{Duration, Instant};
 
 #[derive(Clone)]
-pub struct Task {
-    id: usize,
-    data: u64,
+pub struct Timeout {
+    deadline: Instant,
 }
 
-pub enum TaskState {
-    Ready,
-    NotReady(Waker),
-    Finished,
-}
-
-impl Task {
-    pub fn new(data: u64, id: usize) -> Self {
-        Task { id, data }
+impl Timeout {
+    pub fn new(duration: Duration) -> Self {
+        Timeout {
+            deadline: Instant::now() + duration,
+        }
     }
 }
 
-impl Future for Task {
-    type Output = usize;
+impl Future for Timeout {
+    type Output = ();
     fn poll(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
-        let mut r = REACTOR.lock().unwrap();
-        if r.is_ready(self.id) {
-            *r.tasks.get_mut(&self.id).unwrap() = TaskState::Finished;
-            Poll::Ready(self.id)
-        } else if let std::collections::hash_map::Entry::Occupied(mut e) = r.tasks.entry(self.id) {
-            e.insert(TaskState::NotReady(cx.waker().clone()));
-            Poll::Pending
-        } else {
-            r.register(self.data, cx.waker().clone(), self.id);
-            Poll::Pending
+        match self.deadline.duration_since(Instant::now()) {
+            Duration::ZERO => Poll::Ready(()),
+            remaning @ _ => {
+                let waker = cx.waker().clone();
+
+                thread::spawn(move || {
+                    thread::sleep(remaning);
+                    waker.wake();
+                });
+
+                Poll::Pending
+            }
         }
     }
 }

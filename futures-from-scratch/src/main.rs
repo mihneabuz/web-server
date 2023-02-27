@@ -2,22 +2,24 @@ mod reactor;
 mod executor;
 mod myfutures;
 
+use std::time::Duration;
+
 use futures::join;
 
 use executor::block_on;
-use myfutures::Task;
+use myfutures::Timeout;
 
 fn main() {
     let start = std::time::Instant::now();
 
     let fut1 = async {
-        let val = Task::new(1, 1).await;
-        println!("Got {} at time: {:.2}.", val, start.elapsed().as_secs_f32());
+        Timeout::new(Duration::from_millis(1000)).await;
+        println!("finished 1 at time: {:.2}.", start.elapsed().as_secs_f32());
     };
 
     let fut2 = async {
-        let val = Task::new(2, 2).await;
-        println!("Got {} at time: {:.2}.", val, start.elapsed().as_secs_f32());
+        Timeout::new(Duration::from_millis(2000)).await;
+        println!("finished 2 at time: {:.2}.", start.elapsed().as_secs_f32());
     };
 
     let mainfut = async {
