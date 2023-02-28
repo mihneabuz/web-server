@@ -7,7 +7,7 @@ use std::time::Duration;
 use futures::join;
 
 use executor::block_on;
-use myfutures::Timeout;
+use myfutures::*;
 
 fn main() {
     let start = std::time::Instant::now();
@@ -18,12 +18,17 @@ fn main() {
     };
 
     let fut2 = async {
-        Timeout::new(Duration::from_millis(2000)).await;
+        ReactorTimeout::new(Duration::from_millis(2000)).await;
         println!("finished 2 at time: {:.2}.", start.elapsed().as_secs_f32());
     };
 
+    let fut3 = async {
+        SpinTimeout::new(Duration::from_millis(1500)).await;
+        println!("finished 3 at time: {:.2}.", start.elapsed().as_secs_f32());
+    };
+
     let mainfut = async {
-        join! { fut1, fut2 };
+        join! { fut2, fut3 };
     };
 
     block_on(mainfut);

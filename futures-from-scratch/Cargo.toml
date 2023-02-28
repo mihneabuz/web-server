@@ -8,4 +8,5 @@ edition = "2021"
 [dependencies]
 futures = "0.3.26"
 lazy_static = "1.4.0"
+mio = { version = "0.8.6", features = ["os-poll", "net"] }
 once_cell = "1.17.1"
