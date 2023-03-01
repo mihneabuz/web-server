@@ -1,7 +1,7 @@
-use std::pin::Pin;
-use std::sync::{Mutex, Condvar, Arc};
-use std::task::{RawWaker, RawWakerVTable, Waker, Context, Poll};
 use std::future::Future;
+use std::pin::Pin;
+use std::sync::{Arc, Condvar, Mutex};
+use std::task::{Context, Poll, RawWaker, RawWakerVTable, Waker};
 
 #[derive(Clone)]
 struct MyWaker {
@@ -9,7 +9,7 @@ struct MyWaker {
 }
 
 fn mywaker_wake(s: &MyWaker) {
-    let waker_arc = unsafe { Arc::from_raw(s as * const MyWaker) };
+    let waker_arc = unsafe { Arc::from_raw(s as *const MyWaker) };
     waker_arc.parker.unpark();
 }
 
@@ -34,20 +34,23 @@ fn mywaker_into_waker(s: *const MyWaker) -> Waker {
 }
 
 #[derive(Default)]
-struct Parker(Mutex<bool>, Condvar);
+struct Parker {
+    resumable: Mutex<bool>,
+    condvar: Condvar,
+}
 
 impl Parker {
     fn park(&self) {
-        let mut resumable = self.0.lock().unwrap();
+        let mut resumable = self.resumable.lock().unwrap();
         while !*resumable {
-            resumable = self.1.wait(resumable).unwrap();
+            resumable = self.condvar.wait(resumable).unwrap();
         }
         *resumable = false;
     }
 
     fn unpark(&self) {
-        *self.0.lock().unwrap() = true;
-        self.1.notify_one();
+        *self.resumable.lock().unwrap() = true;
+        self.condvar.notify_one();
     }
 }
 

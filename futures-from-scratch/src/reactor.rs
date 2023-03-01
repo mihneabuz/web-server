@@ -1,46 +1,60 @@
+use std::cmp::Reverse;
 use std::collections::HashMap;
-use std::sync::atomic::AtomicUsize;
+use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::mpsc::{channel, Sender};
 use std::sync::{Arc, Mutex};
 use std::task::Waker;
 use std::thread::JoinHandle;
 use std::time::Duration;
 use std::{thread, time};
-use std::cmp::Reverse;
 
 use mio::event::Source;
-use mio::{Events, Poll, Interest, Token};
+use mio::{Events, Interest, Poll, Token};
 use once_cell::sync::Lazy;
 
-pub static REACTOR: Lazy<Mutex<Box<Reactor>>> = Lazy::new(|| {
-    Reactor::new()
-});
+pub static REACTOR: Lazy<Mutex<Box<Reactor>>> = Lazy::new(|| Reactor::new());
 
 pub struct Reactor {
     timeout_handler: TimeoutHandler,
+    io_handler: IOHandler,
 }
 
 impl Reactor {
     fn new() -> Mutex<Box<Self>> {
         Mutex::new(Box::new(Reactor {
-            timeout_handler: TimeoutHandler::new()
+            timeout_handler: TimeoutHandler::new(),
+            io_handler: IOHandler::new(),
         }))
     }
 
     pub fn register_timeout(&self, deadline: time::Instant, waker: Waker) {
         self.timeout_handler.register_timeout(deadline, waker);
     }
+
+    pub fn register_read<S: Source>(&self, source: &mut S, waker: Waker) {
+        self.io_handler
+            .register_operation(source, Interest::READABLE, waker)
+    }
+
+    pub fn register_write<S: Source>(&self, source: &mut S, waker: Waker) {
+        self.io_handler
+            .register_operation(source, Interest::WRITABLE, waker)
+    }
+
+    pub fn deregister<S: Source>(&self, source: &mut S) {
+        self.io_handler.deregister_operation(source);
+    }
 }
 
 struct TimeoutHandler {
     join_handle: Option<JoinHandle<()>>,
-    dispatcher: Sender<TimeoutEvent>
+    dispatcher: Sender<TimeoutEvent>,
 }
 
 #[derive(Debug)]
 enum TimeoutEvent {
     Close,
-    Signal(time::Instant, Waker)
+    Signal(time::Instant, Waker),
 }
 
 impl TimeoutHandler {
@@ -56,10 +70,11 @@ impl TimeoutHandler {
                     match ev {
                         TimeoutEvent::Signal(dl, waker) => {
                             timeouts.push((dl, waker));
-                        },
+                        }
                         TimeoutEvent::Close => {
+                            println!("[killed timeout handler]");
                             return;
-                        },
+                        }
                     }
                 }
 
@@ -88,7 +103,9 @@ impl TimeoutHandler {
     }
 
     pub fn register_timeout(&self, deadline: time::Instant, waker: Waker) {
-        self.dispatcher.send(TimeoutEvent::Signal(deadline, waker)).unwrap();
+        self.dispatcher
+            .send(TimeoutEvent::Signal(deadline, waker))
+            .unwrap();
     }
 }
 
@@ -106,7 +123,7 @@ struct IOHandler {
     poll: Arc<Mutex<Poll>>,
     wakers: Arc<Mutex<HashMap<usize, Waker>>>,
     exit: Sender<()>,
-    id_counter: AtomicUsize
+    id_counter: AtomicUsize,
 }
 
 impl IOHandler {
@@ -128,19 +145,22 @@ impl IOHandler {
 
             loop {
                 if let Ok(()) = rx.try_recv() {
+                    println!("[killed io handler]");
                     return;
                 }
 
+                std::thread::sleep(Duration::from_millis(10));
                 {
-                    poll.lock().unwrap()
-                        .poll(&mut events, Some(Duration::from_millis(10)))
-                        .unwrap();
-                }
+                    let mut poll = poll.lock().unwrap();
 
-                for event in &events {
-                    let Token(id) = event.token();
-                    if let Some(waker) = { wakers.lock().unwrap().remove(&id) } {
-                        waker.wake();
+                    poll.poll(&mut events, Some(Duration::from_millis(10)))
+                        .unwrap();
+
+                    for event in &events {
+                        let Token(id) = event.token();
+                        if let Some(waker) = { wakers.lock().unwrap().remove(&id) } {
+                            waker.wake();
+                        }
                     }
                 }
             }
@@ -155,18 +175,24 @@ impl IOHandler {
         }
     }
 
-    fn register_read<S: Source>(&self, source: &mut S, waker: Waker) {
-        let id = self.id_counter.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+    fn register_waker(&self, waker: Waker) -> usize {
+        let id = self.id_counter.fetch_add(1, Ordering::SeqCst);
+        self.wakers.lock().unwrap().insert(id, waker);
+        id
+    }
 
-        {
-            self.wakers.lock().unwrap()
-                .insert(id, waker);
-        }
+    fn register_operation<S: Source>(&self, source: &mut S, interest: Interest, waker: Waker) {
+        let id = self.register_waker(waker);
 
-        self.poll.lock().unwrap()
-            .registry()
-            .register(source, Token(0), Interest::READABLE)
-            .unwrap();
+        let poll = self.poll.lock().unwrap();
+        let registry = poll.registry();
+        registry.register(source, Token(id), interest).unwrap();
+    }
+
+    fn deregister_operation<S: Source>(&self, source: &mut S) {
+        let poll = self.poll.lock().unwrap();
+        let registry = poll.registry();
+        registry.deregister(source);
     }
 }
 
